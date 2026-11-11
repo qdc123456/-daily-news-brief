@@ -1,0 +1,125 @@
+每日新闻推送系统　部署与使用说明
+
+本目录是一套可直接跑通的最小骨架，与《每日新闻推送系统_云端架构方案.txt》配套。
+只想最快见效的话，也可以不用本骨架，直接用 sansan0／TrendRadar 的模板部署，见文末【陆】。
+
+
+【壹】部署说明（本次实际：GitHub Actions + Server酱 主通道）
+
+■ 第〇步　本地代码已由助手准备就绪
+　○ 本目录已初始化为 git 仓库并完成首次提交（提交号 401b8a5）
+　○ 目标仓库：qdc123456／-daily-news-brief（公开，名字带一个前导连字符，不影响功能），按 README.txt【壹】上传到 GitHub
+　○ 定时任务已写好：每天北京时间 07:30（工作流里写作 UTC 30 23 * * *）
+　○ 推送完成后你只需要填一个 Secret 并手动触发一次，其余交给云端
+
+■ 第一步　拿 SendKey 并填一个 Secret（约两分钟）
+　○ 打开 https://sct.ftqq.com/ ，用微信扫码登录，并在页面完成关注，复制 SendKey
+　○ 仓库 → Settings → Secrets and variables → Actions → New repository secret
+　○ Name 严格填 SERVERCHAN_SENDKEY（不加空格、不自创名称），Secret 填 SendKey，点 Add secret
+　○ 建议顺手再建一个 WEWORK_WEBHOOK_URL 作备用（企业微信建只有自己的群 → 添加群机器人 → 复制 Webhook）
+　○ Server酱 免费版每天五条，config.yaml 的 max_push_per_day 已设为二，不会超额
+
+■ 第二步　手动触发验证（约一分钟）
+　○ Actions 页 → 每日新闻简报 → Run workflow → 再点一次 Run workflow
+　○ 日志出现「Server酱推送成功」「本轮结束」，手机微信即收到简报
+　○ 之后每天自动运行，电脑关机不影响（GitHub cron 有延迟，通常晚五到三十分钟）
+
+■ 完整 Secret 清单（按需添加，名称严格一致）
+　　SERVERCHAN_SENDKEY　必填　主通道
+　　WEWORK_WEBHOOK_URL　选填　备用通道，强烈建议配上
+　　WEWORK_MSG_TYPE　　　选填　填 text，不填默认 text
+　　QQ_APP_ID／QQ_APP_SECRET／QQ_GROUP_OPENID　选填　QQ 通道三件套
+　　DEEPSEEK_API_KEY　　选填　AI 三句话速览
+　　HEARTBEAT_URL　　　　选填　心跳监控地址
+　○ 严禁把密钥写进 config.yaml 或提交到仓库；Secret 保存后不可再查看，只能覆盖
+
+
+【贰】本地调试（Windows，Python 3.13）
+
+■ 安装依赖
+　pip install -r requirements.txt
+　（若网络慢，可加阿里云镜像：-i https://mirrors.aliyun.com/pypi/simple/）
+
+■ 设置环境变量后运行
+　○ 复制 .env.example 为 .env，填入 SERVERCHAN_SENDKEY
+　○ 在 Git Bash 中执行：set -a; source .env; set +a; python daily_brief.py
+　○ 或在 PowerShell 中用 $env:SERVERCHAN_SENDKEY="..." 逐项设置后运行
+
+■ 只想验证代码不推送
+　○ 不设置任何 SERVERCHAN_SENDKEY 与 WEWORK_WEBHOOK_URL 运行即可；脚本会跑完采集与去重，最后因"全通道失败"退出码 1，这是预期行为
+　○ 检查生成的 state.json，其中 pending 数组里就是当天生成的简报全文，可直接查看排版效果
+
+■ 只想测纯逻辑（不联网）
+　python -c "import daily_brief as d; print(d.normalize_url('https://a.com/x/?utm_source=s#top')); print(d.chunk_by_bytes('中文测试'*500, 100).__len__())"
+
+
+【叁】配置对照
+
+■ config.yaml 常改项
+　○ sections／feeds　栏目与数据源；国内云函数请替换为国内源或自建 RSSHub 地址
+　○ personal_keywords　个人相关小事，例如城市、行业、机构、报名、补贴、预警
+　○ major_keywords　重大事件关键词，命中后排到简报最前
+　○ max_per_section　每栏条数，调小可避免简报过长被切成多条消息
+　○ max_push_per_day　全天硬上限，默认二条
+　○ quiet_hours　静默时段，默认 23 点到次日 7 点只入队不推送
+　○ ai_summary／qq_enabled　按需打开，并补齐对应 Secrets
+
+■ 时区与定时
+　○ GitHub Actions cron 只认 UTC：北京时间 07:30 写作 30 23 * * *
+　○ 想改时间：北京时间减八小时，跨天时算到前一日
+　○ 云函数 Cron 多为七字段（秒 分 时 日 月 周 年），且以控制台时区设置为准，务必先手动触发验证
+
+
+【肆】常见报错对照
+
+■ 定时任务不触发
+　○ 工作流文件不在默认分支 → 合并到 main
+　○ 仓库六十天无活动被自动禁用 → 手动 Run workflow 一次保活
+　○ 私有仓库用完每月二千分钟 → 改公开仓库或等待下月重置
+　○ 只是延迟 → 看 Actions 运行历史，晚几十分钟属正常
+
+■ 采集全是零条
+　○ 国内网络访问 Google News RSS 不通 → 换国内源或改用 GitHub Actions 境外 Runner
+　○ max_age_hours 设得太小 → 临时调到 72 观察
+　○ 源站改版 → 看 state.json 的 health 字段，替换失效源
+
+■ 手机收不到消息
+　○ 微信侧未绑定企业微信插件 → 重新绑定
+　○ WEWORK_MSG_TYPE 用 markdown 但插件只渲染 text → 改成 text
+　○ 消息超长被截断 → 调小 max_per_section，脚本已按字节自动分段
+　○ Webhook 填错或已被重置 → 重新复制并覆盖 Secret
+
+■ QQ 推送失败
+　○ 机器人仍是"开发中" → 在开放平台改为"已上线"
+　○ 未开启群聊权限或群内"机器人主动发言"开关 → 逐项检查
+　○ QQ_GROUP_OPENID 填成群号 → 必须是从事件回调里取得的那串 OpenID
+　○ access_token 获取失败 → 检查 AppSecret 是否被重置（只显示一次）
+
+■ state.json 提交冲突
+　○ 同时跑了多个定时任务 → 工作流已用 concurrency 限制单实例，不要手动并发触发
+　○ 循环触发 → 提交信息必须带 [skip ci]，daily.yml 里已写好
+
+
+【伍】日常维护清单
+
+■ 每周：看一眼 Actions 日志与 state.json，确认无重复推送、无长期失败的源
+■ 每月：手动 Run workflow 一次保活；检查免费额度与各通道配额政策是否变化
+■ 每季度：核对数据源是否失效、轮换一次密钥、同步一次上游项目更新
+■ 告警：配置 Healthchecks.io 之类的心跳地址；推送全失败时工作流会标红，GitHub 自动发邮件
+
+
+【陆】两条路线怎么选
+
+■ 路线甲　最快见效（不写代码）
+　○ 用 sansan0／TrendRadar 的 Use this template 建仓库
+　○ 只配 WEWORK_WEBHOOK_URL 一个 Secret，改 config／frequency_words.txt 关键词
+　○ Actions 手动跑一次即可
+　○ 现成能力：三种推送模式（当日汇总／当前榜单／增量监控）、AI 分析简报、多通道
+　○ 注意 GPL-3.0 许可，个人自用无碍，二次分发或对外服务需评估开源义务
+
+■ 路线乙　长期可控（本骨架）
+　○ 自研精简版，三层去重、待补队列、心跳、源健康分全部掌握在自己手里
+　○ 代码逐行中文注释，便于按自己的业务改
+　○ 后续可平滑迁到腾讯云函数 SCF 或阿里云函数计算 FC：
+　　把 daily.yml 换成函数定时触发器，把 state.json 换成云 KV／对象存储，
+　　依赖一起打包，函数超时调到六十到一百二十秒即可

@@ -1,0 +1,109 @@
+# 每日新闻简报 · 配置文件
+# 修改本文件后提交到默认分支即可生效，无需改动代码。
+# 注意：所有密钥不写在这里，全部走云端 Secrets / 环境变量。
+
+# ------------------------------------------------------------------
+# 主推送通道（本次部署选 serverchan）
+#   serverchan = Server酱：微信扫码拿 SendKey，免费版每日 5 条，整份简报一次送达
+#   wework     = 企业微信群机器人：免实名、约 20 条/分钟，需按字节分段
+# 主通道失败时会自动降级到另一个通道，两者都配好等于双保险。
+# ------------------------------------------------------------------
+primary_channel: serverchan
+
+# 四个栏目，顺序即简报中的呈现顺序
+sections:
+  - 时政
+  - 财经
+  - 科技
+  - AI
+
+# ------------------------------------------------------------------
+# 数据源清单
+# 下列示例使用 Google News RSS 的关键词检索（无需 API Key，格式稳定）。
+# 重要限制：
+#   一、Google News RSS 官方声明仅供个人 feed reader 非商业使用；
+#   二、国内云函数地域大概率访问不通，请放在 GitHub Actions 境外 Runner 使用；
+#   三、若改用腾讯云函数 / 阿里云函数，请把 url 替换为国内站点 RSS，
+#       或替换为自建 RSSHub 地址，例如：
+#       https://你的域名/人民网/时政
+#       https://你的域名/财联社/电报
+#   四、每个栏目配两个以上独立源，主源挂掉时备源自动顶上。
+# ------------------------------------------------------------------
+feeds:
+  时政:
+    - name: 时政要闻
+      url: "https://news.google.com/rss/search?q=时政+要闻+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+    - name: 政策发布
+      url: "https://news.google.com/rss/search?q=国务院+政策+发布+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+
+  财经:
+    - name: 市场动态
+      url: "https://news.google.com/rss/search?q=A股+央行+市场+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+    - name: 宏观与政策
+      url: "https://news.google.com/rss/search?q=宏观经济+利率+政策+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+
+  科技:
+    - name: 科技产业
+      url: "https://news.google.com/rss/search?q=半导体+科技+产业+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+    - name: 产品与发布
+      url: "https://news.google.com/rss/search?q=新品+发布+技术+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+
+  AI:
+    - name: 大模型动态
+      url: "https://news.google.com/rss/search?q=大模型+人工智能+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+    - name: AI 产业
+      url: "https://news.google.com/rss/search?q=AI+模型+发布+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+
+# ------------------------------------------------------------------
+# 采集参数
+# ------------------------------------------------------------------
+fetch_timeout: 8              # 单个源的请求超时秒数
+max_entries_per_feed: 30      # 每个源最多读取多少条
+max_age_hours: 48             # 只保留近多少小时的新闻，防止回填旧闻
+
+# ------------------------------------------------------------------
+# 去重与分级
+# ------------------------------------------------------------------
+title_similarity: 0.84        # 标题相似度阈值，越高越不容易误合并
+dedupe_ttl_days: 7            # 已推记录保留天数
+max_per_section: 4            # 每个栏目最多展示条数
+max_major: 3                  # 重大事件最多条数
+max_personal: 3               # 与你相关最多条数
+
+# 重大事件关键词：命中即排到简报最前
+major_keywords:
+  - 重大
+  - 突发
+  - 国务院
+  - 央行降息
+  - 紧急
+  - 发布会
+
+# 个人相关小事关键词：只进日报的【与你相关】板块，不即时打扰
+# 支持三种写法：普通词（命中任一即可）、+必须词（必须包含）、!排除词（出现即排除）
+personal_keywords:
+  - 南宁
+  - 广西
+  - 数字经济
+  - 专项债
+  - 投标
+  - 政府采购
+  - 补贴申报
+  - 报名截止
+  - 暴雨预警
+  - 台风
+  - "!广告"
+
+# ------------------------------------------------------------------
+# 频率控制
+# ------------------------------------------------------------------
+max_push_per_day: 2           # 全天硬上限（含重大事件插播）
+quiet_hours: [23, 7]          # 静默时段：23 点至次日 7 点只入队不推送
+health_fail_threshold: 3      # 源连续失败几次后在简报中提示"暂不可用"
+
+# ------------------------------------------------------------------
+# 可选能力
+# ------------------------------------------------------------------
+ai_summary: false             # 是否调用大模型生成三句话速览；需配 DEEPSEEK_API_KEY
+ai_model: "deepseek-chat"
+qq_enabled: false             # 是否同时推送到 QQ 官方机器人群；需配三个 QQ 变量
